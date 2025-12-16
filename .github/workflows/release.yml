@@ -71,13 +71,13 @@ jobs:
 
       - name: Run and test
         run: |
-          echo "1" | ./build/physics.exe
+          echo "1" | ./build/physics
           echo "Program executed successfully"
 
       - name: Verify version
         run: |
           echo "=== Program output ==="
-          output=$(echo "1" | ./build/physics.exe)
+          output=$(echo "1" | ./build/physics)
           echo "$output"
           if echo "$output" | grep -q "Version"; then
             echo "✓ Version found in output"
@@ -118,13 +118,13 @@ jobs:
 
       - name: Run and test
         run: |
-          echo "1" | .\build\physics.exe.exe
+          echo "1" | .\build\physics.exe
           echo "Program executed successfully"
 
       - name: Verify version
         run: |
           echo "=== Program output ==="
-          $output = echo "1" | .\build\physics.exe.exe
+          $output = echo "1" | .\build\physics.exe
           echo $output
           if ($output -like "*Version*") {
             echo "✓ Version found in output"
