@@ -1,9 +1,8 @@
-name: ci-release
+name: ci-release-every-commit
 
 on:
   push:
     branches: ["main"]
-    tags: ["v*"]
   pull_request:
 
 permissions:
@@ -21,8 +20,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      # Linux deps for SFML + xvfb for headless GUI run [web:51]
+      # Linux deps for building SFML from source via FetchContent + headless run with Xvfb [web:51]
       - name: Install dependencies (Ubuntu)
         if: runner.os == 'Linux'
         run: |
@@ -39,18 +40,17 @@ jobs:
       - name: Build
         run: cmake --build build -j 2
 
-      # Smoke-run on Ubuntu: run with virtual X server + timeout, because app is graphical. [web:51]
+      # Smoke-run on Ubuntu: Xvfb + timeout, иначе GUI зависнет в CI [web:51]
       - name: Smoke run (Ubuntu) smile + elephant
         if: runner.os == 'Linux'
         run: |
           set -e
           test -f data/smile.txt
           test -f data/elephant.txt
-          # app normally runs until window close, so we limit runtime
           xvfb-run -a timeout 5s ./build/physics data/smile.txt || true
           xvfb-run -a timeout 5s ./build/physics data/elephant.txt || true
 
-      # Smoke-run on Windows: start process, wait, then kill (graphical app). [file:14]
+      # Smoke-run on Windows: стартуем процесс и убиваем через несколько секунд (GUI) [file:14]
       - name: Smoke run (Windows) smile + elephant
         if: runner.os == 'Windows'
         shell: pwsh
@@ -66,7 +66,7 @@ jobs:
           Start-Sleep -Seconds 5
           if (!$p2.HasExited) { Stop-Process -Id $p2.Id -Force }
 
-      # Package artifacts for release
+      # Packaging for release assets
       - name: Pack (Ubuntu)
         if: runner.os == 'Linux'
         run: |
@@ -93,18 +93,38 @@ jobs:
           path: physics-windows.zip
 
   release:
-    name: Create Release (tag only)
-    if: startsWith(github.ref, 'refs/tags/v')
+    name: Tag + Release (each commit)
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     needs: [build-test]
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Download artifacts
         uses: actions/download-artifact@v4
 
+      - name: Create tag for this commit
+        id: tag
+        shell: bash
+        run: |
+          TAG="ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG" "$GITHUB_SHA"
+          git push origin "$TAG"
+
+      # Create release for that tag; releases are tag-based in GitHub flow [web:85][web:41]
       - name: Create GitHub Release and upload assets
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: ${{ steps.tag.outputs.tag }}
+          prerelease: true
           files: |
             release-linux/physics-linux.tar.gz
             release-windows/physics-windows.zip
