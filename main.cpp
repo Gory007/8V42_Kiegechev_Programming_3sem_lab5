@@ -17,6 +17,7 @@ int main(int argc, char* argv[]) {
          * или менять содержимое Application. Для начала
          * лучше сфокусироваться на Ball.hpp, Ball.cpp и
          * World.cpp
+         * 
          */
         Application app("physics");
         app.run(w);
@@ -26,3 +27,4 @@ int main(int argc, char* argv[]) {
     }
     return 0;
 }
+
