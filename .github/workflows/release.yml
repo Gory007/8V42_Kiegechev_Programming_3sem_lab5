@@ -1,12 +1,17 @@
-name: ci
+name: ci-release
 
 on:
   push:
+    branches: ["main"]
+    tags: ["v*"]
   pull_request:
 
+permissions:
+  contents: write
+
 jobs:
-  build-and-smoke:
-    name: Build + smoke (${{ matrix.os }})
+  build-test:
+    name: Build + run (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -17,36 +22,36 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Linux deps: нужны для сборки SFML из исходников (у тебя SFML может подтягиваться через FetchContent) [file:8]
+      # Linux deps for SFML + xvfb for headless GUI run [web:51]
       - name: Install dependencies (Ubuntu)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            cmake ninja-build g++ git \
-            xvfb \
+            cmake ninja-build g++ git xvfb \
             libx11-dev libxrandr-dev libxcursor-dev libxi-dev libudev-dev \
             libgl1-mesa-dev libfreetype6-dev \
             libopenal-dev libvorbis-dev libflac-dev
 
-      - name: Configure (CMake + Ninja)
+      - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
         run: cmake --build build -j 2
 
-      # Smoke run на Linux через виртуальный X-сервер, иначе SFML не сможет открыть окно на runner'е
-      - name: Smoke run (Ubuntu) smile + elephant (5s each)
+      # Smoke-run on Ubuntu: run with virtual X server + timeout, because app is graphical. [web:51]
+      - name: Smoke run (Ubuntu) smile + elephant
         if: runner.os == 'Linux'
         run: |
           set -e
           test -f data/smile.txt
           test -f data/elephant.txt
+          # app normally runs until window close, so we limit runtime
           xvfb-run -a timeout 5s ./build/physics data/smile.txt || true
           xvfb-run -a timeout 5s ./build/physics data/elephant.txt || true
 
-      # Smoke run на Windows: запускаем и принудительно останавливаем через несколько секунд
-      - name: Smoke run (Windows) smile + elephant (5s each)
+      # Smoke-run on Windows: start process, wait, then kill (graphical app). [file:14]
+      - name: Smoke run (Windows) smile + elephant
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
@@ -61,11 +66,45 @@ jobs:
           Start-Sleep -Seconds 5
           if (!$p2.HasExited) { Stop-Process -Id $p2.Id -Force }
 
-      - name: Upload artifact
+      # Package artifacts for release
+      - name: Pack (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          tar -czf physics-linux.tar.gz -C build physics
+
+      - name: Pack (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path build\physics.exe -DestinationPath physics-windows.zip -Force
+
+      - name: Upload artifact (Linux)
+        if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
-          name: physics-${{ runner.os }}
-          path: |
-            build/physics
-            build/physics.exe
-          if-no-files-found: error
+          name: release-linux
+          path: physics-linux.tar.gz
+
+      - name: Upload artifact (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: physics-windows.zip
+
+  release:
+    name: Create Release (tag only)
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    needs: [build-test]
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Create GitHub Release and upload assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release-linux/physics-linux.tar.gz
+            release-windows/physics-windows.zip
