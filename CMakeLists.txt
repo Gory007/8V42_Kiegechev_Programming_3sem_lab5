@@ -45,8 +45,6 @@ endif ()
 # нет удобного кроссплатформенного способа получить число pi.
 # define ниже нужен для включения M_PI
 
-target_link_options(physics PRIVATE -static-libstdc++ -static-libgcc)
-
 if (MSVC)
     add_definitions(-D_USE_MATH_DEFINES)
 endif ()

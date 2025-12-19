@@ -23,7 +23,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Linux deps for building SFML from source via FetchContent + headless run with Xvfb [web:51]
+      # Linux deps for building SFML from source via FetchContent + headless run with Xvfb
       - name: Install dependencies (Ubuntu)
         if: runner.os == 'Linux'
         run: |
@@ -34,13 +34,29 @@ jobs:
             libgl1-mesa-dev libfreetype6-dev \
             libopenal-dev libvorbis-dev libflac-dev
 
-      - name: Configure
+      # -------- Configure --------
+      - name: Configure (Ubuntu)
+        if: runner.os == 'Linux'
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 
-      - name: Build
+      # Variant A: MSVC toolchain on Windows
+      - name: Configure (Windows MSVC)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+
+      # -------- Build --------
+      - name: Build (Ubuntu)
+        if: runner.os == 'Linux'
         run: cmake --build build -j 2
 
-      # Smoke-run on Ubuntu: Xvfb + timeout, иначе GUI зависнет в CI [web:51]
+      - name: Build (Windows MSVC Release)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: cmake --build build --config Release
+
+      # -------- Smoke run --------
+      # App is GUI; on Linux runner we need virtual X and a timeout
       - name: Smoke run (Ubuntu) smile + elephant
         if: runner.os == 'Linux'
         run: |
@@ -50,7 +66,7 @@ jobs:
           xvfb-run -a timeout 5s ./build/physics data/smile.txt || true
           xvfb-run -a timeout 5s ./build/physics data/elephant.txt || true
 
-      # Smoke-run on Windows: стартуем процесс и убиваем через несколько секунд (GUI) [file:14]
+      # On Windows: start and kill after 5s (GUI app)
       - name: Smoke run (Windows) smile + elephant
         if: runner.os == 'Windows'
         shell: pwsh
@@ -58,15 +74,18 @@ jobs:
           if (!(Test-Path "data\smile.txt")) { throw "data\smile.txt not found" }
           if (!(Test-Path "data\elephant.txt")) { throw "data\elephant.txt not found" }
 
-          $p1 = Start-Process -FilePath ".\build\physics.exe" -ArgumentList "data\smile.txt" -PassThru
+          $exe = ".\build\Release\physics.exe"
+          if (!(Test-Path $exe)) { throw "physics.exe not found at $exe" }
+
+          $p1 = Start-Process -FilePath $exe -ArgumentList "data\smile.txt" -PassThru
           Start-Sleep -Seconds 5
           if (!$p1.HasExited) { Stop-Process -Id $p1.Id -Force }
 
-          $p2 = Start-Process -FilePath ".\build\physics.exe" -ArgumentList "data\elephant.txt" -PassThru
+          $p2 = Start-Process -FilePath $exe -ArgumentList "data\elephant.txt" -PassThru
           Start-Sleep -Seconds 5
           if (!$p2.HasExited) { Stop-Process -Id $p2.Id -Force }
 
-      # Packaging for release assets
+      # -------- Package --------
       - name: Pack (Ubuntu)
         if: runner.os == 'Linux'
         run: |
@@ -76,7 +95,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Compress-Archive -Path build\physics.exe -DestinationPath physics-windows.zip -Force
+          Compress-Archive -Path build\Release\physics.exe -DestinationPath physics-windows.zip -Force
 
       - name: Upload artifact (Linux)
         if: runner.os == 'Linux'
@@ -118,7 +137,6 @@ jobs:
           git tag "$TAG" "$GITHUB_SHA"
           git push origin "$TAG"
 
-      # Create release for that tag; releases are tag-based in GitHub flow [web:85][web:41]
       - name: Create GitHub Release and upload assets
         uses: softprops/action-gh-release@v2
         with:
