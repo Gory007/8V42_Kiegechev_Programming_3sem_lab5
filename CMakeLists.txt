@@ -44,6 +44,9 @@ endif ()
 # К сожалению, вплоть до C++20 https://en.cppreference.com/w/cpp/numeric/constants
 # нет удобного кроссплатформенного способа получить число pi.
 # define ниже нужен для включения M_PI
+
+target_link_options(physics PRIVATE -static-libstdc++ -static-libgcc)
+
 if (MSVC)
     add_definitions(-D_USE_MATH_DEFINES)
 endif ()
